@@ -5,7 +5,8 @@
 ; ---------------------------------------------------------------------
 
 include 'wasm_const.inc'
-include 'wasm_name'
+include 'wasm_name.inc'
+include 'wasm_func.inc'
 
 buf_ptr dd ?
 buf_siz dd ?
@@ -89,7 +90,6 @@ parse_module:
 
 parse_end:
         println "Successfully parsed wasm binary"
-        leave
         ret
 
 check_header:
@@ -209,6 +209,77 @@ parse_vec_result:
 .done
         pop     edi
         ret
+
+parse_import_sec:
+        call     leb128_decode_u32
+        println "Section 2: Import (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+parse_function_sec:
+        call     leb128_decode_u32
+        println "Section 3: Function (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+parse_table_sec:
+        call     leb128_decode_u32
+        println "Section 4: Table (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+parse_memory_sec:
+        call     leb128_decode_u32
+        println "Section 5: Memory (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+parse_global_sec:
+        call     leb128_decode_u32
+        println "Section 6: Global (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+parse_export_sec:
+        call     leb128_decode_u32
+        println "Section 7: Export (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+parse_start_sec:
+        call    leb128_decode_u32
+        println "Section 8: Start (%d bytes)", eax
+        add     eax, ebx
+        push    eax
+        call    leb128_decode_u32
+        println "Function index: %d", eax
+        pop     eax
+        cmp     eax, ebx
+        jne     .error
+        ret
+.error:
+        println "Section size didnot match section"
+        jmp     parse_error
+
+parse_element_sec:
+        call     leb128_decode_u32
+        println "Section 9: Element (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+parse_code_sec:
+        call     leb128_decode_u32
+        println "Section 10: Code (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+parse_data_sec:
+        call     leb128_decode_u32
+        println "Section 11: Data (%d bytes)\n skipping...", eax
+        add     ebx, eax
+        ret
+
+
 
 parse_error:
         println "\nError occured while parsing"
