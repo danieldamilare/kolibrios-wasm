@@ -1,0 +1,5 @@
+parser
+*.o
+
+*.wasm
+!tests/*.wasm

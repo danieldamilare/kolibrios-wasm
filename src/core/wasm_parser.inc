@@ -10,6 +10,8 @@ include 'wasm_func.inc'
 
 buf_ptr dd ?
 buf_siz dd ?
+buf_end dd ?
+func_idx dd 0
 
 ; mimic c setjmp
 parse_saved_esp dd 0 
@@ -76,21 +78,28 @@ section_parse_table:
 ; eax - scratch register
 ; ---------------------------------------------------------
 wasm_parse:
+; a wasm binary at least have a 4 bytes magic and 4 bytes header
+        cmp     ebx, 0x08 
+        jb      .too_small
         mov     [buf_ptr], eax
         mov     [buf_siz], ebx
+        lea     ecx, [ebx + eax]
+        mov     [buf_end], ecx
+        ; println "Buf start: 0x%x, buf_size: %d, buf_end: 0x%x", eax, ebx, ecx
         mov     ebx, eax
-
-        ; save for recovery
+        ; save for error recovery
         mov     [parse_saved_esp], esp
         mov     [parse_saved_ebp], ebp
-
-parse_module:
+.parse_module:
         call    check_header
         call    parse_sections
-        jmp     parse_end
 
-parse_end:
+.parse_end:
         println "Successfully parsed wasm binary"
+        ret
+
+.too_small:
+        println "Refusing to parse a file of size: 0x%x without wasm header", ebx
         ret
 
 check_header:
@@ -119,12 +128,18 @@ parse_sections:
         cmp     eax, SECTION_DATA ; biggest section number in SECTION
         ja      .section_skip
         call    dword [section_parse_table + eax * 4]
-        mov     eax, [buf_ptr]
-        add     eax, [buf_siz]
-        cmp     eax, ebx
-        je      @f
+        mov     eax, [buf_end]
+        cmp     ebx, eax
+        jge     @f
         jmp     @b
 .section_skip:
+        println "In section skip"
+        call leb128_decode_u32
+        add  ebx, eax
+        mov  eax, [buf_end]
+        cmp  ebx, eax
+        jge  @f
+        jmp  @b
 @@:
         ret
         
@@ -178,16 +193,19 @@ parse_functype: ; function start with 0x60
         jmp     parse_error
 
 .continue:
+        println "       functype[%d]:", dword [func_idx]
+        inc [func_idx]
         advance
         call    parse_vec_param
         call    parse_vec_result
+        println ""
         ret
 
 parse_vec_param:
         push    edi
         call    leb128_decode_u32
         mov     edi, eax
-        print "        Params(%d): ", edi
+        print "            Params(%d): ", edi
 
 .loop:
         test    edi, edi
@@ -207,7 +225,7 @@ parse_vec_result:
         push    edi
         call    leb128_decode_u32
         mov     edi, eax
-        print "        Result(%d): ", edi
+        print "            Result(%d): ", edi
 
 .loop:
         test    edi, edi

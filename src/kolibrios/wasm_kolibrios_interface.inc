@@ -15,6 +15,7 @@ import terminal, \
 
 macro print str, [args]{
 common
+        pusha
         local ..s, ..count,  ..skip
         ..count = 0
         jmp ..skip
@@ -31,11 +32,13 @@ common
         push ..s
         call [con_printf]
         add esp, 4 + (..count * 4)
+        popa
 }
 
 
 macro println str, [args]{
 common
+        pusha
         local ..s, ..skip, ..count
         ..count = 0
         jmp ..skip
@@ -51,5 +54,6 @@ common
         push ..s
         call [con_printf]
         add esp, 4 + (..count * 4)
+        popa
 }
 
