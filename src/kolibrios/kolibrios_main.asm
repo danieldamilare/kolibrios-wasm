@@ -13,7 +13,7 @@ dd parameters
 dd 00
 
 include 'wasm_kolibrios_interface.inc'
-include 'wasm_parser.inc'
+include '../core/wasm_parser.inc'
 
 START:
         mcall   68, 11

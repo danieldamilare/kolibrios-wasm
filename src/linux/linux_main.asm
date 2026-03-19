@@ -3,7 +3,7 @@ public  _start
 use32
 
 include 'wasm_linux_interface.inc'
-include 'wasm_parser.inc'
+include '../core/wasm_parser.inc'
 
 section '.data' writeable
 buf_size dd 0
