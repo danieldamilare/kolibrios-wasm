@@ -1,5 +1,6 @@
 parser
 *.o
+*.c
 
 *.wasm
 !tests/*.wasm
