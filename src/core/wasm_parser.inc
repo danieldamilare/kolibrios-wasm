@@ -244,23 +244,188 @@ parse_vec_result:
 parse_import_sec:
         call    leb128_decode_u32
         println ""
-        println "Section 2: Import (%d bytes) - Skipping", eax
-        add     ebx, eax
+        println "Section 2: Import (%d bytes)", eax
+        add     eax, ebx
+        push    eax
+        call    leb128_decode_u32
+        println "    Vec of Import (Length: %d)", eax
+        mov     edi, eax
+
+.loop:
+        test    edi, edi
+        jz      .done
+        call    parse_import
+        dec     edi
+        jmp     .loop     
+.done:
+        pop     esi
+        cmp     ebx, esi
+        jne     .error
         ret
+.error:
+        println "Invalid section size for import. ebx: (0x%x), esi: (0x%x", ebx, esi
+        jmp     parse_error
+
+parse_import:
+; parse modname first
+        call    leb128_decode_u32
+        print "       module: %.*s", eax, ebx
+        add     ebx, eax
+; parse nm 
+        call    leb128_decode_u32
+        print " name: %.*s ", eax, ebx
+        add     ebx, eax
+
+parse_importdesc:
+        movzx     eax, byte [ebx]
+        advance
+        test    eax, eax
+        je      .typeidx
+        cmp     eax, 0x01
+        je      .tabletype 
+        cmp     eax, 0x02 
+        je      .memtype
+        cmp     eax, 0x03
+        je      .globaltype
+
+.typeidx:
+        call    leb128_decode_u32
+        println " Import type: typeidx (%d)", eax
+        ret
+.tabletype:
+        print   " Import type: "
+        jmp     parse_table_type
+
+.memtype:
+        print   " Import type: "
+        jmp     parse_memtype
+
+.globaltype:
+        print   " Import type: "
+        jmp    parse_globaltype
+
+
+parse_table_type:
+        cmp   byte [ebx], 0x70
+        je    @f
+        movzx   eax, byte [ebx]  
+        println "Error: Expecting funcref element type buf found (0x%x)", eax
+        jmp     parse_error
+@@:
+        advance
+        print   "Tabletype "
+        jmp parse_limits
+        
+
+
+parse_memtype:
+        println "Memtype "
+parse_limits:
+        movzx   eax, byte [ebx]
+        advance
+        test  eax, eax
+        je    .min
+        cmp   eax, 0x01
+        je    .minmax
+        println "Invalid Limit parsed"
+        jmp      parse_error
+.min:
+        call    leb128_decode_u32
+        println " with limit min: (%d), and unbounded max", eax
+        ret
+.minmax:
+        call    leb128_decode_u32
+        print   " with limit min: (%d)", eax
+        call    leb128_decode_u32
+        println   ", and max: (%d)", eax
+        ret
+
+
+parse_globaltype:
+        print   "Globaltype: "
+        call    valtype_to_str
+        test    eax, eax
+        jne     .valtype_error
+        advance
+        movzx     eax, byte[ebx]
+        advance
+
+; check if mutable or constant
+        test    eax, eax
+        jne     .check_var
+        println "(const)"
+        ret
+
+.check_var:
+        cmp     eax, 0x01
+        jne     .mut_error
+        println "(var)"
+        ret
+
+.valtype_error:
+        movzx   eax, byte [ebx]
+        println " Invalid Valtype (0x%x)", eax
+        jmp     parse_error
+.mut_error:
+        println " Invalid mutable type (%x)", eax
+        jmp     parse_error
+
 
 parse_function_sec:
         call    leb128_decode_u32
         println ""
-        println "Section 3: Function (%d bytes) - Skipping", eax
-        add     ebx, eax
+        println "Section 3: Function (%d bytes)", eax
+        add     eax, ebx
+        push    eax
+; function is  vec(typeidx)
+
+        call    leb128_decode_u32
+        mov     edi, eax
+        print   "Vector of Typeidx: "
+.loop:
+        test    edi, edi 
+        jz      .done
+        call    leb128_decode_u32
+        print   " %d ", eax
+        dec     edi
+        jmp     .loop
+.done:
+        pop     esi
+        cmp     esi, ebx
+        jne     .error
+        println ""
         ret
+.error:
+        println "Error while parsing function section. Section size is incorrect"
+        jmp     parse_error
+
 
 parse_table_sec:
         call     leb128_decode_u32
         println ""
-        println "Section 4: Table (%d bytes) - Skipping", eax
-        add     ebx, eax
+        println "Section 4: Table (%d bytes)", eax
+        add     eax, ebx
+        push    eax
+; table is a vector of tabletype
+        call    leb128_decode_u32
+        mov     edi, eax
+        println "    Vector of Tabletype: "
+.loop:
+        print   "        "
+        test    edi, edi
+        jz      .done
+        call    parse_table_type
+        dec     edi
+        jmp     .loop
+.done:
+        pop     esi
+        cmp     ebx, esi
+        jne     .error
         ret
+.error:
+        println "Error while parsing table section: Section size is incorrect"
+        jmp     parse_error
+
 
 parse_memory_sec:
         call     leb128_decode_u32
@@ -296,7 +461,7 @@ parse_start_sec:
         jne     .error
         ret
 .error:
-        println "Section size didnot match section"
+        println "Section size didn't match section"
         jmp     parse_error
 
 parse_element_sec:

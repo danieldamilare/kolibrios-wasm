@@ -1,6 +1,7 @@
-parser
+*.swp
+*.swo
+*.swn
+*~
+*.bin
 *.o
-*.c
-
-*.wasm
-!tests/*.wasm
+*.obj
