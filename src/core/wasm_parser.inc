@@ -13,10 +13,8 @@ buf_siz dd ?
 buf_end dd ?
 func_idx dd 0
 
-; mimic c setjmp
 parse_saved_esp dd 0 
 parse_saved_ebp dd 0
-
 
 macro advance{
         inc ebx
@@ -319,13 +317,13 @@ parse_table_type:
 
 
 parse_memtype:
-        println "Memtype "
+        print "Memtype: "
 parse_limits:
         movzx   eax, byte [ebx]
         advance
         test  eax, eax
         je    .min
-        cmp   eax, 0x01
+        cmp   eax, LIMIT_MIN_MAX
         je    .minmax
         println "Invalid Limit parsed"
         jmp      parse_error
@@ -357,7 +355,7 @@ parse_globaltype:
         ret
 
 .check_var:
-        cmp     eax, 0x01
+        cmp     eax, GLOBAL_VAR
         jne     .mut_error
         println "(var)"
         ret
@@ -409,11 +407,11 @@ parse_table_sec:
 ; table is a vector of tabletype
         call    leb128_decode_u32
         mov     edi, eax
-        println "    Vector of Tabletype: "
+        println "    Vector of Tabletype (Length: %d): ", edi
 .loop:
-        print   "        "
         test    edi, edi
         jz      .done
+        print   "        "
         call    parse_table_type
         dec     edi
         jmp     .loop
@@ -430,22 +428,119 @@ parse_table_sec:
 parse_memory_sec:
         call     leb128_decode_u32
         println ""
-        println "Section 5: Memory (%d bytes) - Skipping", eax
-        add     ebx, eax
+        println "Section 5: Memory (%d bytes)", eax
+        add     eax, ebx
+        push    eax
+; memory section is a vector of memtype
+        call    leb128_decode_u32
+        println "    Vector of Memtype (Length: %d): ", eax
+        mov     edi, eax
+
+.loop:
+        test    edi, edi
+        jz      .done
+        print   "        "
+        call   parse_memtype
+        dec     edi
+        jmp     .loop
+.done:
+        pop     esi
+        cmp     ebx, esi
+        jne     .error
         ret
+.error:
+        println "Error while parsing memory section: Section size is incorrect"
+        jmp     parse_error
+
 
 parse_global_sec:
         call    leb128_decode_u32
         println ""
         println "Section 6: Global (%d bytes)- Skipping", eax
-        add     ebx, eax
+        add     eax, ebx
+        push    eax
+; global section is a vector of global
+        call    leb128_decode_u32
+        println  "    Vector of Global (Length: %d): ", eax
+        mov     edi, eax
+.loop:
+        test    edi, edi
+        jz      .done
+        print   "        "
+        call    parse_globaltype
+        call    parse_expr
+        dec     edi
+        jmp     .loop
+.done:
+        pop     esi
+        cmp     esi, ebx
+        jne     .error
         ret
+.error:
+        println "Error while parsing global section: Section size is incorrect"
+        jmp     parse_error
+
 
 parse_export_sec:
         call    leb128_decode_u32
         println ""
-        println "Section 7: Export (%d bytes) -  Skipping", eax
+        println "Section 7: Export (%d bytes)", eax
+        add     eax, ebx
+        push    eax
+        call    leb128_decode_u32
+        println "    Vector of Export (Length: %d): ", eax
+        mov     edi, eax
+.loop:
+        test    edi, edi
+        jz      .done
+        call    parse_export
+        dec     edi
+        jmp     .loop
+.done:
+        pop     esi
+        cmp     esi, ebx
+        jne     .error
+        ret
+.error: 
+        println "Error while parsing export section: Section size is incorrect"
+        jmp     parse_error
+
+
+parse_export:
+; parse nm
+        call    leb128_decode_u32
+        print "        name: %.*s ", eax, ebx
         add     ebx, eax
+
+        movzx     eax, byte [ebx]
+        advance
+        test    eax, eax
+        je      .funcidx
+        cmp     eax, 0x01
+        je      .tableidx
+        cmp     eax, 0x02
+        je      .memidx
+        cmp     eax, 0x03
+        je      .globalidx
+
+.funcidx:
+        call    leb128_decode_u32
+        println " Export type: funcidx (%d)", eax
+        ret
+
+.tableidx:
+        call    leb128_decode_u32
+        println " Export type: tableidx (%d)", eax
+        ret
+
+.memidx:
+        call    leb128_decode_u32
+        println " Export type: memidx (%d)", eax
+        ret
+
+.globalidx:
+        call    leb128_decode_u32
+        println " Export type: globalidx (%d)", eax
         ret
 
 parse_start_sec:
