@@ -5,7 +5,7 @@ str_f32         db "f32", 0
 str_f64         db "f64", 0
 valtype:
   dd VAL_I32, str_i32
-  dd VAL_I64, str_i64
+        dd VAL_I64, str_i64
   dd VAL_F32, str_f32
   dd VAL_F64, str_f64
   dd 0
@@ -39,6 +39,7 @@ opcode_str_table:
 
         dd str_op_i32_load
         dd str_op_i64_load
+        dd str_op_f32_load
         dd str_op_f64_load
         dd str_op_i32_load8_s
         dd str_op_i32_load8_u
@@ -74,6 +75,7 @@ opcode_str_table:
         dd str_i32_lt_s
         dd str_i32_lt_u
         dd str_i32_gt_s
+        dd str_i32_gt_u
         dd str_i32_le_s
         dd str_i32_le_u
         dd str_i32_ge_s
@@ -85,6 +87,7 @@ opcode_str_table:
         dd str_i64_lt_s
         dd str_i64_lt_u
         dd str_i64_gt_s
+        dd str_i64_gt_u
         dd str_i64_le_s
         dd str_i64_le_u
         dd str_i64_ge_s
@@ -165,7 +168,6 @@ opcode_str_table:
         dd str_op_f64_nearest
         dd str_op_f64_sqrt
         dd str_op_f64_add
-        dd str_op_f64_add
         dd str_op_f64_sub
         dd str_op_f64_mul
         dd str_op_f64_div
@@ -199,6 +201,8 @@ opcode_str_table:
         dd str_op_f32_reinterpret_i32
         dd str_op_f64_reinterpret_i64
 
+assert ($ - opcode_str_table) = (192 * 4)
+
 opcode_parse_table:
         dd parse_op_simple ;0x00
         dd parse_op_simple ; 0x01
@@ -221,8 +225,10 @@ opcode_parse_table:
         rept 23 { dd parse_op_memarg } ; 0x28 - 0x3e
         dd parse_mem_inst
         dd parse_mem_inst
-        dd parse_op_u32
-        dd parse_op_u64
+        dd parse_op_i32
+        dd parse_op_i64
         dd parse_op_f32
         dd parse_op_f64
         rept 123 { dd parse_simple }
+
+assert ($ - opcode_parse_table) = (192 * 4)
