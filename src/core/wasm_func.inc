@@ -81,7 +81,7 @@ leb128_decode_s32:
         pop     ecx
         ret
 .error:
-        println "Error while decoding leb128 integer: i32 must not exceed 4 bytes"
+        println "Error while decoding leb128 integer: i32 must not exceed 5 bytes"
         jmp     parse_error
 
 

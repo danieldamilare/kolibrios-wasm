@@ -155,8 +155,6 @@ parse_custom_sec:
         ret
 
 parse_type_sec:
-        push    ebp
-        mov     ebp, esp
         call    leb128_decode_u32
         println ""
         println "Section 1: Type (%d bytes): ", eax
@@ -178,7 +176,6 @@ parse_type_sec:
         pop     esi 
         cmp     esi, ebx
         jne     .error
-        leave
         ret
 .error:
         println "Invalid section size for section: type"
@@ -729,7 +726,6 @@ parse_op_if:
         mov     esi, 0x05
 .loop:
         movzx     eax, byte[ebx]
-        advance
         cmp     eax ,edi
         je      .done
         cmp     eax, esi
@@ -737,6 +733,7 @@ parse_op_if:
         call    dword [opcode_parse_table + eax * 4]
         jmp     .loop
 .else:
+        advance
         println ""
         println "else"
 
@@ -748,6 +745,7 @@ parse_op_if:
         call    dword [opcode_parse_table + eax * 4]
         jmp     @b
 .done:
+        advance
         pop     edi
         println "end"
         ret
