@@ -457,7 +457,7 @@ parse_memory_sec:
 parse_global_sec:
         call    leb128_decode_u32
         println ""
-        println "Section 6: Global (%d bytes)- Skipping", eax
+        println "Section 6: Global (%d bytes)", eax
         add     eax, ebx
         push    eax
 ; global section is a vector of global
@@ -469,7 +469,8 @@ parse_global_sec:
         jz      .done
         print   "        "
         call    parse_globaltype
-        call    parse_expr
+        print   "        init: "
+        call    parse_const_expr
         dec     edi
         jmp     .loop
 .done:
@@ -582,7 +583,7 @@ parse_element_sec:
         jne     .error
         ret
 .error: 
-        println "Error while parsing element section: Section size is incorrect"
+        println "Error while parsing element section: Section size is incorrect, supposed to end at 0x%x but ended at 0x%x", ebx, esi
         jmp     parse_error
 
 
@@ -679,7 +680,7 @@ parse_op_u32:
         println " %s %d", dword [opcode_str_table + esi * 4], eax
         ret
 
-parse_op_mem_arg:
+parse_op_memarg:
         push    edi
         movzx   esi, byte [ebx]
         advance
@@ -689,8 +690,6 @@ parse_op_mem_arg:
         println "%s align=%d offset=%d", dword [opcode_str_table + esi * 4], edi, eax
         pop     edi
         ret
-
-
 
 parse_blocktype:
         cmp     byte [ebx], 0x40
@@ -704,7 +703,9 @@ parse_blocktype:
         advance
         println ""
         ret
-
+.error:
+        println "Error: Invalid valtype type while parsing blocktype"
+        jmp     parse_error
 
 parse_op_block:
         movzx   esi, byte [ebx]
@@ -733,7 +734,7 @@ parse_op_if:
         je      .done
         cmp     eax, esi
         je      .else 
-        call    [opcode_parse_table + eax * 4]
+        call    dword [opcode_parse_table + eax * 4]
         jmp     .loop
 .else:
         println ""
@@ -744,7 +745,7 @@ parse_op_if:
         advance
         cmp     eax, edi
         je      .done
-        call    [opcode_parse_table + eax * 4]
+        call    dword [opcode_parse_table + eax * 4]
         jmp     @b
 .done:
         pop     edi
@@ -807,12 +808,12 @@ parse_op_f64:
         sub     eax, ebx
         cmp     eax, 8
         jl      .error
-        print " %s ", [opcode_str_table + esi * 4]
+        print " %s ", dword [opcode_str_table + esi * 4]
         println "%lf", dword [ebx], dword [ebx + 4] ; argument are pushed in reversed order
         add     ebx, 8
         ret
 .error:
-        println "Incomplete binary for f64"
+        println "Error: Incomplete binary for f64"
         jmp     parse_error
 
 
@@ -830,52 +831,60 @@ parse_op_f32:
         movsd   [esp], xmm0
         pop     eax
         pop     edx
-        print "%s ", [opcode_str_table + esi * 4]
+        print "%s ", dword [opcode_str_table + esi * 4]
         println "%lf", edx, eax
         ret
+.error:
+        println "Error: Incomplete binary for f32"
+        jmp     parse_error
 
 
 parse_expr:
         movzx   esi, byte [ebx] ; read but don't advance so handler can handle their opcode themselves
         cmp     esi, 0x0B
         je      .done
-        call    [opcode_parse_table + esi * 4]
+        call    dword [opcode_parse_table + esi * 4]
         jmp parse_expr
 .done:
         advance  ; advance the end byte
         ret
 
-
 parse_const_expr:
-       movzx    esi, byte [ebx] 
-       cmp      esi, 0x0B
-       je       .done
-       cmp      esi, OP_GLOBAL_GET
-       je       .expr
-       cmp      esi, OP_I32_CONST
-       jl       .error
-       cmp      esi, OP_F64_CONST
-       jg       .error
-.expr:
-       call     [opcode_parse_table + esi * 4]
-       jmp      parse_const_expr
-.done:
+        movzx   esi, byte [ebx]
+        cmp     esi, 0x0B
+        je      .error_empty    ; empty const expr is invalid
+        cmp     esi, OP_GLOBAL_GET
+        je      .dispatch
+        cmp     esi, OP_I32_CONST
+        jl      .error
+        cmp     esi, OP_F64_CONST
+        jg      .error
+.dispatch:
+        call    dword [opcode_parse_table + esi * 4]
+        movzx   esi, byte [ebx]
+        cmp     esi, 0x0B
+        jne     .error_multiple
+        advance    
         ret
-.error:
-        println "Error while parsing const expression: Expression is not a constant expression"
+.error_empty:
+        println "Error: empty constant expression"
         jmp     parse_error
-
+.error_multiple:
+        println "Error: multiple instructions in constant expression"
+        jmp     parse_error
+.error:
+        println "Error: invalid instruction in constant expression (0x%x)", esi
+        jmp     parse_error
 
 parse_op_i32:
         movzx   esi, byte [ebx]
         advance
         call    leb128_decode_s32
-        println "%s %d", [opcode_str_table + esi * 4], eax
+        println "%s %d", dword [opcode_str_table + esi * 4], eax
         ret
 
 parse_op_i64:
         ret
-
 
 parse_error:
         println "Error occured while parsing"
