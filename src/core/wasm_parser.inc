@@ -6,7 +6,6 @@
 
 include 'wasm_const.inc'
 include 'wasm_name.inc'
-include 'wasm_func.inc'
 
 buf_ptr dd ?
 buf_siz dd ?
@@ -19,6 +18,8 @@ parse_saved_ebp dd 0
 macro advance{
         inc ebx
 }
+
+include 'wasm_func.inc'
 
 ;---------------------------------------------
 ; print a string word for a valtype
@@ -583,7 +584,29 @@ parse_element_sec:
 .error: 
         println "Error while parsing element section: Section size is incorrect"
         jmp     parse_error
-        
+
+
+parse_elem:
+        call    leb128_decode_u32
+        println "    tableidx: %d", eax
+        println "    offset"
+        call    parse_const_expr
+        print  "    vector of funcidx: "
+        call    leb128_decode_u32
+        push    edi
+        mov     edi, eax
+.loop:
+        test    edi, edi
+        jz      .done
+        call    leb128_decode_u32
+        print " %d ", eax
+        dec     edi
+        jmp .loop
+.done:
+        pop     edi
+        println ""
+        ret
+
 
 parse_code_sec:
         call     leb128_decode_u32
@@ -596,6 +619,49 @@ parse_code_sec:
 parse_data_sec:
         call     leb128_decode_u32
         println ""
+        println "Section 11: Data (%d bytes)", eax
+        add     eax, ebx
+        push    eax
+        call    leb128_decode_u32
+        println "    Vector of Data (Length: %d)", eax
+        mov     edi, eax
+.loop:
+        test    edi, edi
+        jz      .done
+        call    parse_data
+        dec     edi
+        jmp     .loop
+.done:
+        pop     esi
+        cmp     ebx, esi
+        jne     .error
+        ret
+.error:
+        println "Error while parsing Data section: Section size is incorrect"
+        jmp     parse_error
+
+
+parse_data:
+        call    leb128_decode_u32        
+        println "        memidx: %d", eax
+        call    parse_const_expr
+        print   "        vector of bytes:"
+        call    leb128_decode_u32
+        push    edi
+        mov     edi, eax
+.loop: 
+        test    edi, edi
+        jz      .done
+        movzx   esi, byte [ebx]
+        advance
+        print   " 0x%x", esi
+        dec     edi
+        jmp     .loop
+.done:
+        pop     edi
+        println ""
+        ret
+
 ; -----------------------------------------------------------------
 ; expression parsing
 ; parse wasm instructions
@@ -614,13 +680,17 @@ parse_op_u32:
         ret
 
 parse_op_mem_arg:
+        push    edi
         movzx   esi, byte [ebx]
         advance
         call    leb128_decode_u32
         mov     edi, eax
         call    leb128_decode_u32
         println "%s align=%d offset=%d", dword [opcode_str_table + esi * 4], edi, eax
+        pop     edi
         ret
+
+
 
 parse_blocktype:
         cmp     byte [ebx], 0x40
@@ -647,7 +717,9 @@ parse_op_block:
         println "An error occurred while parsing %s expression", dword [opcode_str_table + esi * 4]
         jmp     parse_error
 
+
 parse_op_if:
+        push    edi
         movzx   esi, byte [ebx]
         advance
         print   " %s ", dword [opcode_str_table + esi * 4]
@@ -655,7 +727,7 @@ parse_op_if:
         mov     edi, 0x0b
         mov     esi, 0x05
 .loop:
-        mov     eax, byte[ebx]
+        movzx     eax, byte[ebx]
         advance
         cmp     eax ,edi
         je      .done
@@ -668,13 +740,14 @@ parse_op_if:
         println "else"
 
 @@:
-        mov     eax, byte [ebx]
+        movzx     eax, byte [ebx]
         advance
         cmp     eax, edi
         je      .done
         call    [opcode_parse_table + eax * 4]
         jmp     @b
 .done:
+        pop     edi
         println "end"
         ret
 
@@ -683,6 +756,7 @@ parse_op_br_table:
         advance
         print   " %s ", dword [opcode_str_table + esi * 4]
         call    leb128_decode_u32
+        push    edi
         mov     edi, eax
 .loop:
         test    edi, edi
@@ -693,7 +767,9 @@ parse_op_br_table:
 .done:
         call    leb128_decode_u32
         println " labelidx: %d", eax
+        pop     edi
         ret
+
 
 parse_call_indirect:
         movzx   esi, byte [ebx]
@@ -739,6 +815,7 @@ parse_op_f64:
         println "Incomplete binary for f64"
         jmp     parse_error
 
+
 parse_op_f32:
         movzx   esi, byte [ebx]
         advance
@@ -749,12 +826,14 @@ parse_op_f32:
         movss   xmm0,  dword [ebx]
         add     ebx, 4
         cvtss2sd xmm0, xmm0  
+        sub     esp, 8
         movsd   [esp], xmm0
         pop     eax
         pop     edx
         print "%s ", [opcode_str_table + esi * 4]
         println "%lf", edx, eax
         ret
+
 
 parse_expr:
         movzx   esi, byte [ebx] ; read but don't advance so handler can handle their opcode themselves
@@ -766,11 +845,37 @@ parse_expr:
         advance  ; advance the end byte
         ret
 
+
+parse_const_expr:
+       movzx    esi, byte [ebx] 
+       cmp      esi, 0x0B
+       je       .done
+       cmp      esi, OP_GLOBAL_GET
+       je       .expr
+       cmp      esi, OP_I32_CONST
+       jl       .error
+       cmp      esi, OP_F64_CONST
+       jg       .error
+.expr:
+       call     [opcode_parse_table + esi * 4]
+       jmp      parse_const_expr
+.done:
+        ret
+.error:
+        println "Error while parsing const expression: Expression is not a constant expression"
+        jmp     parse_error
+
+
 parse_op_i32:
+        movzx   esi, byte [ebx]
+        advance
+        call    leb128_decode_s32
+        println "%s %d", [opcode_str_table + esi * 4], eax
         ret
 
 parse_op_i64:
         ret
+
 
 parse_error:
         println "Error occured while parsing"
