@@ -175,4 +175,3 @@ The Linux build exists purely for development and testing. The KolibriOS build
 is the actual target. Both builds share the same core parser in `src/core/` and
 produce identical output,  only the platform interface differs.
 
-This project is being developed as a GSoC 2026 contribution for KolibriOS.
